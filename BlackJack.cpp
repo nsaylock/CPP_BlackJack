@@ -11,11 +11,11 @@
 #include <algorithm>
 #include <string>
 #include <stdexcept>
+#include <random>
 
 #include <fcntl.h>
 #include <io.h>
 
-#include "BlackJack.h"
 
 #define SPADE L"\u2660"
 #define HEART L"\u2665"
@@ -26,62 +26,55 @@ enum SUIT {spade = 1, heart, diamond, club};
 
 using namespace std;
 
+// Structures
+struct Card {
+	string name;
+	int value;
+};
+
 // Functions
-int DEALCARD(vector<int>& check);
-void displayPlayerHand(vector<string> playerHand, int playerTotal, vector<int> discard, bool split, int hitSplit, int playerSplit1, int playerSplit2);
-void displayPlayerHand(vector<string> playerHand, int playerTotal, vector<int> discard, bool split, int hitSplit, int playerSplit1, int playerSplit2, 
-	vector<string> playerSplitHand1, vector<string> playerSplitHand2);
-void displayDealerHand(vector<string> dealerHand, int dealerTotal, int dealerInitTotal, int playerTotal, string hit);
+vector<Card> initializeDeck(void);
+void dealCard(vector<Card>& deck, int& deckIndex, vector<Card>& hand);
+int handValue(vector<Card> hand, int &aces, int total);
+void aceCheck(vector<Card> hand, int& aces);
+void displayPlayerHand(vector<Card> playerHand, int playerTotal, bool split, int hitSplit, int playerSplit1, int playerSplit2, 
+	vector<Card> playerSplitHand1, vector<Card> playerSplitHand2);
+void displayDealerHand(vector<Card> dealerHand, int dealerTotal, int dealerInitTotal, int playerTotal, string hit);
 void delay(void);
-void aceCheck(int x, int& y);
 void displayBankroll(int bankroll);
-void displaySuit(char temp);
-void getRunningCount(vector<int> discard, int cardValues[]);
+void getRunningCount(vector<Card> deck, int deckIndex);
+void printCard(Card card);
+void basicStrategy(int playerTotal, int dealerInitTotal);
 
-void printSuit(int suitToSelect);
-
-// Known issues:
+// KNOWN ISSUES
 // Double down on one split pair will change the bet for both pairs - probably need to new variables to keep track of bets on each pair respectively
 
 
 
 int main()
 {
-	string cardNames[52]
-	{
-		"Ad", "Ac", "Ah", "As","2d", "2c", "2h", "2s", "3d", "3c", "3h", "3s",
-		"4d", "4c", "4h", "4s", "5d", "5c", "5h", "5s", "6d", "6c", "6h", "6s",
-		"7d", "7c", "7h", "7s", "8d", "8c", "8h", "8s", "9d", "9c", "9h", "9s",
-		"10d", "10c", "10h", "10s", "Jd", "Jc", "Jh", "Js", "Qd", "Qc", "Qh", "Qs",
-		"Kd", "Kc", "Kh", "Ks",
-	};
-	int cardValues[52]
-	{
-		11, 11, 11, 11, 2, 2, 2, 2, 3, 3, 3, 3,
-		4, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6,
-		7, 7, 7, 7, 8, 8, 8, 8, 9, 9, 9, 9,
-		10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10,
-		10, 10, 10, 10,
-	};
-
-	srand(time(0));
-	int x = 0;
+	vector<Card> deck = initializeDeck();
 	int bankroll = 5;
 	int round = 0;
-	vector<int> discard = {};
+	int deckIndex = 0;
 	int runningCount = 0;
+	int bet = 0;
 
 	// ---------------------------- START ROUND LOOP ------------------------------------------------------
-	while (bankroll != 0)
+	while (bankroll > 0)
 	{
 		round++;
 		cout << "        ROUND " << round << endl;
 		displayBankroll(bankroll);
-		getRunningCount(discard, cardValues);
-		vector<string> playerHand = {};
-		vector<string> playerSplitHand1 = {};
-		vector<string> playerSplitHand2 = {};
-		vector<string> dealerHand = {};
+		int numOfDecks = ceil((deck.size()-deckIndex)/52);
+		cout << "\nNumber of Decks Remaining: " << numOfDecks << endl;
+		
+			
+		getRunningCount(deck, deckIndex);
+		vector<Card> playerHand = {};
+		vector<Card> playerSplitHand1 = {};
+		vector<Card> playerSplitHand2 = {};
+		vector<Card> dealerHand = {};
 		string hit = "h";
 		int dealerTotal = 0;
 		int dealerAces = 0;
@@ -90,8 +83,8 @@ int main()
 		int playerAces = 0;
 		bool split = false;
 		int hitSplit = 0;
+		
 
-		int bet = 0;
 		do {
 			cin.clear();
 			cin.ignore(256, '\n');
@@ -99,39 +92,36 @@ int main()
 			cin >> bet;
 			if (bet > bankroll)
 				cout << "You Don't have that much money to bet\n";
-			if (bet == 0 && !cin.fail())
-				cout << "Ah sitting out are we? Try Again\n";
 			if (cin.fail())
 				cout << "Invalid Input\n";
-		} while (bet > bankroll || bet == 0);
+		} while (bet > bankroll);
+
+		if (bet == 0) {
+			bankroll = 0;
+			break;
+		}
 		
-		//------------------------------------------------------------
-		for (int i = 0; i < 2; i++) {								//
-			x = DEALCARD(discard);									//
-			discard.push_back(x);									// Deal initial hands
-			playerHand.push_back(cardNames[x]);
-			aceCheck(x, playerAces);								// player > dealer > player > dealer
-			playerTotal = playerTotal + cardValues[x];	
-			playerSplit1 = cardValues[x];							//
-																	//
-			x = DEALCARD(discard);									//
-			discard.push_back(x);									//
-			dealerHand.push_back(cardNames[x]);	
-			aceCheck(x, dealerAces);								//
-			dealerTotal = dealerTotal + cardValues[x];				//
-		}															//
-		//------------------------------------------------------------
-		int dealerInitTotal = cardValues[x];
+			dealCard(deck, deckIndex, playerHand);	// deal initial hands
+			dealCard(deck, deckIndex, dealerHand);
+			dealCard(deck, deckIndex, playerHand);
+			dealCard(deck, deckIndex, dealerHand);	// deals 2 cards to player and 2 cards to dealer
+			aceCheck(playerHand, playerAces);
+			aceCheck(dealerHand, dealerAces);	// check each card for value 11, add 1 to aces variable
+			dealerTotal = handValue(dealerHand, dealerAces, dealerTotal);
+			playerTotal = handValue(playerHand, playerAces, playerTotal);
+				
+		int dealerInitTotal = dealerHand[1].value;
+		playerSplit1 = playerHand[0].value;
 		int playerSplit2 = playerSplit1;
 
 		displayDealerHand(dealerHand, dealerTotal, dealerInitTotal, playerTotal, hit);
-		displayPlayerHand(playerHand, playerTotal, discard, split, hitSplit, playerSplit1, playerSplit2, playerSplitHand1, playerSplitHand2);
+		displayPlayerHand(playerHand, playerTotal, split, hitSplit, playerSplit1, playerSplit2, playerSplitHand1, playerSplitHand2);
 
 																														// Check for pair to split !!!!!!!!!!!!!!!!!!!!!!!
 
 		string splitInput;
 
-		if (playerHand[0].at(0) == playerHand[1].at(0)) {
+		if (playerHand[0].name.at(0) == playerHand[1].name.at(0)) {
 			split = true;
 			playerSplitHand1.push_back(playerHand[0]);
 			playerSplitHand2.push_back(playerHand[1]);
@@ -159,12 +149,14 @@ int main()
 				split = false;
 
 			displayDealerHand(dealerHand, dealerTotal, dealerInitTotal, playerTotal, hit);
-			displayPlayerHand(playerHand, playerTotal, discard, split, hitSplit, playerSplit1, playerSplit2, playerSplitHand1, playerSplitHand2);
+			displayPlayerHand(playerHand, playerTotal, split, hitSplit, playerSplit1, playerSplit2, playerSplitHand1, playerSplitHand2);
 																								// Possible add to display the additional bet being placed
 		}
 
 		
-		while (playerTotal < 21 && hit == "h") {						// Ask player for hit or stay loop until hit = s	
+		while (playerTotal < 21 && hit == "h") {	
+			basicStrategy(playerTotal, dealerInitTotal);
+								// Ask player for hit or stay loop until hit = s	
 			cout << "Hit, Stay, or Double Down? (h/s/dd) -> ";
 			cin >> hit;
 			cout << endl;
@@ -191,26 +183,29 @@ int main()
 						hit = "s";
 					}
 				}
-				x = DEALCARD(discard);
-				discard.push_back(x);
-				playerHand.push_back(cardNames[x]);
-				aceCheck(x, playerAces);
-				playerTotal = playerTotal + cardValues[x];
 
 				if (split) {
-					if (hitSplit == 1)
-						playerSplitHand1.push_back(cardNames[x]);
-					else if (hitSplit == 2)
-						playerSplitHand2.push_back(cardNames[x]);
+					if (hitSplit == 1) {
+						dealCard(deck, deckIndex, playerSplitHand1);
+						aceCheck(playerSplitHand1, playerAces);
+						playerSplit1 = handValue(playerSplitHand1, playerAces, playerSplit1);
+						playerTotal = playerSplit1;
+					}
+					else if (hitSplit == 2) {
+						dealCard(deck, deckIndex, playerSplitHand2);
+						aceCheck(playerSplitHand2, playerAces);
+						playerSplit2 = handValue(playerSplitHand2, playerAces, playerSplit2);		// could run into error where unused A in one hand affects total of the other
+						playerTotal = playerSplit2;
+					}
+				} else {
+					dealCard(deck, deckIndex, playerHand);
+					aceCheck(playerHand, playerAces);
+					playerTotal = handValue(playerHand, playerAces, playerTotal);
 				}
 
-				if (playerTotal > 21 && playerAces > 0) {
-					playerTotal = playerTotal - 10;
-					playerAces--;
-				}
 				if (playerTotal < 21 && !split && hit != "s") {
 					displayDealerHand(dealerHand, dealerTotal, dealerInitTotal, playerTotal, hit);
-					displayPlayerHand(playerHand, playerTotal, discard, split, hitSplit, playerSplit1, playerSplit2, playerSplitHand1, playerSplitHand2);
+					displayPlayerHand(playerHand, playerTotal, split, hitSplit, playerSplit1, playerSplit2, playerSplitHand1, playerSplitHand2);
 				}
 			} // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ END HIT AND DOUBLE DOWN ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -232,33 +227,24 @@ int main()
 				}	
 				if (hitSplit != 0) {
 					displayDealerHand(dealerHand, dealerTotal, dealerInitTotal, playerTotal, hit);
-					displayPlayerHand(playerHand, playerTotal, discard, split, hitSplit, playerSplit1, playerSplit2, playerSplitHand1, playerSplitHand2);
+					displayPlayerHand(playerHand, playerTotal, split, hitSplit, playerSplit1, playerSplit2, playerSplitHand1, playerSplitHand2);
 				}
 			}
 		}
-	
 
-				//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ END HIT STAY OR DOUBLE DOWN LOOP ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-																						// Deal cards to Dealer, stand on 17
+		// Deal cards to Dealer, stand on 17
 		while (dealerTotal < 17 && playerTotal <= 21) {
-			x = DEALCARD(discard);
-			discard.push_back(x);
-			dealerHand.push_back(cardNames[x]);
-			dealerTotal = dealerTotal + cardValues[x];
-
-			if (dealerTotal > 21 && dealerAces > 0) {
-				dealerTotal = dealerTotal - 10;
-				dealerAces = dealerAces - 1;
-			}
+			dealCard(deck, deckIndex, dealerHand);
+			aceCheck(dealerHand, dealerAces);
+			dealerTotal = handValue(dealerHand, dealerAces, dealerTotal);
 
 		}
 		if (playerTotal != 21 || playerHand.size() > 2) {
 			displayDealerHand(dealerHand, dealerTotal, dealerInitTotal, playerTotal, hit);
-			displayPlayerHand(playerHand, playerTotal, discard, split, hitSplit, playerSplit1, playerSplit2, playerSplitHand1, playerSplitHand2);
+			displayPlayerHand(playerHand, playerTotal, split, hitSplit, playerSplit1, playerSplit2, playerSplitHand1, playerSplitHand2);
 		}
 
-				// see if player beat the dealer
+		// see if player beat the dealer
 		if (split) {
 			cout << "Split Pair 1: ";
 			if (playerSplit1 == dealerTotal)
@@ -324,44 +310,184 @@ int main()
 		cout << endl; system("pause"); cout << endl;
 	} // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ END ROUND WHILE LOOP ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-	cout << "You ran out of money. Back to work for you\n";
+	if (bet == 0)
+		cout << "Player quit\n";
+	else 
+		cout << "You ran out of money. Back to work for you\n";
 
 	return 0;
 }
 
-int DEALCARD(vector<int>& check) {
-	int x = rand() % 51;
-	if (check.size() > 0 && check.size() < 52) {
-		for (int i = 0; i <= check.size() - 1; i++)
-		{
-			if (x == check[i]) {
-				x = rand() % 51;
-				i = 0;
-			}
+vector<Card> initializeDeck(void) {
+	vector<string> faces = {"2","3","4","5","6","7","8","9","10","J","Q","K","A"};
+	vector<string> suits = {"S","H","D","C"};
+	vector<Card> deck = {};
+
+	for (string face : faces) {
+		for (string suit : suits) {
+			Card card;	// Create a card of struct type Card
+			card.name = face + suit;	// Combine face and suit, string concatenation
+
+			if (face == "J" || face == "Q" || face == "K")
+				card.value = 10;
+			else if (face == "A")
+				card.value = 11;
+			else
+				card.value = stoi(face);	// if face is number use string to integer to get value
+
+			for (int i = 0; i < 5; i++)		// 5 = number of decks
+				deck.push_back(card);	// Place each face/suit combo (card) at end of deck vector
 		}
-		return x;
 	}
-	else if (check.size() == 52) {
-		check = {};
-		return x;
-	}
-	else
-		return x;
+	shuffle(deck.begin(), deck.end(), default_random_engine(time(nullptr)));
+	return deck;
 }
-void getRunningCount(vector<int> discard, int cardValues[]) {
+
+void dealCard(vector<Card>& deck, int& deckIndex, vector<Card>& hand) {
+	hand.push_back(deck[deckIndex++]);
+	if (deckIndex == 52*5) {	// 52 * number of decks
+		deck = initializeDeck();
+		deckIndex = 0;
+	}
+}
+
+int handValue(vector<Card> hand, int &aces, int total) {
+	total = 0;
+	for (int i = 0; i < hand.size(); i++) {
+		total += hand[i].value;
+		if (total > 21 && aces > 0) {
+				total -= 10;
+				aces--;
+		}
+	}
+	return total;
+}
+
+void aceCheck(vector<Card> hand, int& aces) {
+	for (int i = 0; i < hand.size(); i++) {
+		if (hand[i].value == 11)
+			aces++;
+		
+	}
+}
+
+void getRunningCount(vector<Card> deck, int deckIndex) {
 	int runningCount = 0;
-	for (int i = 0; i < discard.size(); i++) {
-		int temp = cardValues[discard[i]];
+	int trueCount = 0;
+	int numOfDecksRemaining = 5;
+	for (int i = 0; i < deckIndex; i++) {
+		int temp = deck[i].value;
 		if (temp > 1 && temp < 7)
 			runningCount++;
 		else if (temp > 9)
 			runningCount--;
 	}
+	if (deckIndex > 52 && deckIndex < 52*2)
+		numOfDecksRemaining = 4;
+	else if (deckIndex > 52*2 && deckIndex < 52*3)
+		numOfDecksRemaining = 3;
+	else if (deckIndex > 52*3 && deckIndex < 52*4)
+		numOfDecksRemaining = 2;
+	else if (deckIndex > 52*4 && deckIndex < 52*5)
+		numOfDecksRemaining = 1;
+
+	if (runningCount > numOfDecksRemaining || runningCount < numOfDecksRemaining * -1)
+		trueCount = round(runningCount/numOfDecksRemaining);
+	else
+		trueCount = runningCount;
+
 	cout << "Running Count: " << runningCount << endl;
+	cout << "True Count: " << trueCount << endl;
 
 }
 
-void printSuit(int suitToSelect) {
+void displayPlayerHand(vector<Card> playerHand, int playerTotal, bool split, int hitSplit, int playerSplit1, int playerSplit2, 
+	vector<Card> playerSplitHand1, vector<Card> playerSplitHand2) {
+	if (split) 
+	{
+		cout << "Player Split 1: ";
+		
+		for (int i = 0; i < playerSplitHand1.size(); i++) {
+			printCard(playerSplitHand1[i]);
+			cout << " ";
+		}
+		if (hitSplit == 1)
+			cout << " <-";
+		cout << "\nTotal: " << playerSplit1 << "\n\n";
+
+		cout << "Player Split 2: ";
+		for (int i = 0; i < playerSplitHand2.size(); i++) {
+			printCard(playerSplitHand2[i]);
+			cout << " ";
+		}
+		if (hitSplit == 2)
+			cout << " <-";
+		cout << "\nTotal: " << playerSplit2 << "\n";
+		cout << "^^^^^^^^^^^^^^^^^^^^^^^^^^\n";
+
+	} else {
+		 cout << "Player: ";
+		 for (int i = 0; i < playerHand.size(); i++)
+		 {
+			 printCard(playerHand[i]);
+			 cout << " ";
+		 }
+	 cout << endl;
+	 printf("Total: %i \n", playerTotal);
+	 cout << "^^^^^^^^^^^^^^^^^^^^^^^^^^\n";
+	}
+}
+
+void displayDealerHand(vector<Card> dealerHand, int dealerTotal, int dealerInitTotal, int playerTotal, string hit) {
+
+	cout << "-------------------------\n";
+	cout << "Dealer: ";
+	if (dealerHand.size() > 2 || playerTotal >= 21 || hit == "s") {
+		for (int i = 0; i < dealerHand.size(); i++) {
+			printCard(dealerHand[i]);
+			cout << " ";
+		}
+		cout << "\nTotal: " << dealerTotal << endl;
+	}
+	else {
+		cout << "?? ";
+		printCard(dealerHand[1]);
+		cout << "\nTotal: " << dealerInitTotal << endl;
+	}
+	cout << endl;
+}
+
+void delay(void) {
+	this_thread::sleep_for(chrono::milliseconds(200));
+}
+
+
+
+void displayBankroll(int bankroll) {
+	cout << "Bankroll: ";
+	for (int i = 0; i < bankroll; i++)
+		cout << "$";
+	cout << " (" << bankroll << ")" << endl;
+}
+
+void printCard(Card card) {
+    int lastChar = card.name.size() - 1;
+    char temp = card.name.at(lastChar);
+    SUIT suitToSelect = spade;
+
+    card.name.erase(lastChar);
+    cout << card.name;
+
+    if (temp == 'S')
+        suitToSelect = spade;
+	else if (temp == 'H')
+		suitToSelect = heart;
+	else if (temp == 'D')
+		suitToSelect = diamond;
+	else
+		suitToSelect = club;
+
+
 	_setmode(_fileno(stdout), _O_U16TEXT);
 	switch (suitToSelect) {
 	case spade:
@@ -380,106 +506,41 @@ void printSuit(int suitToSelect) {
 	_setmode(_fileno(stdout), _O_TEXT);
 }
 
-void displayPlayerHand(vector<string> playerHand, int playerTotal, vector<int> discard, bool split, int hitSplit, int playerSplit1, int playerSplit2, 
-	vector<string> playerSplitHand1, vector<string> playerSplitHand2) {
-	int lastChar = 0;
-	char temp = 'q';
-	if (split) 
-	{
-		int lastChar = 0;
-		char temp = 'q';
-		cout << "Player Split 1: ";
-		
-		for (int i = 0; i < playerSplitHand1.size(); i++) {
-			lastChar = playerSplitHand1[i].size() - 1;
-			temp = playerSplitHand1[i].at(lastChar);
-			cout << playerSplitHand1[i].erase(lastChar);
-			displaySuit(temp);
-			cout << " ";
-		}
-		if (hitSplit == 1)
-			cout << " <-";
-		cout << "\nTotal: " << playerSplit1 << "\n\n";
-
-		cout << "Player Split 2: ";
-		for (int i = 0; i < playerSplitHand2.size(); i++) {
-			lastChar = playerSplitHand2[i].size() - 1;
-			temp = playerSplitHand2[i].at(lastChar);
-			cout << playerSplitHand2[i].erase(playerSplitHand2[i].size() - 1);
-			displaySuit(temp);
-			cout << " ";
-		}
-		if (hitSplit == 2)
-			cout << " <-";
-		cout << "\nTotal: " << playerSplit2 << "\n";
-		cout << "^^^^^^^^^^^^^^^^^^^^^^^^^^\n";
-
-	} else {
-		 cout << "Player: ";
-		 for (int i = 0; i < playerHand.size(); i++)
-		 {
-			 lastChar = playerHand[i].size() - 1;
-			 temp = playerHand[i].at(lastChar);
-			 cout << playerHand[i].erase(playerHand[i].size() - 1);
-			 displaySuit(temp);
-			 cout << " ";
-		 }
-	 cout << endl;
-	 printf("Total: %i \n", playerTotal);
-	 cout << "^^^^^^^^^^^^^^^^^^^^^^^^^^\n";
+void basicStrategy(int playerTotal, int dealerInitTotal) {
+	if (playerTotal > 1 && playerTotal < 9)
+		cout << "Perfect Basic Strategy: HIT\n";
+	else if (playerTotal == 9) {
+		if (dealerInitTotal < 3 || dealerInitTotal > 6)
+			cout << "Perfect Basic Strategy: HIT\n";
+		else
+			cout << "Perfect Basic Strategy: DOUBLE DOWN\n";
 	}
-}
-
-void displayDealerHand(vector<string> dealerHand, int dealerTotal, int dealerInitTotal, int playerTotal, string hit) {
-	int lastChar = 0;
-	char temp = 'q';
-
-	cout << "-------------------------\n";
-	cout << "Dealer: ";
-	if (dealerHand.size() > 2 || playerTotal >= 21 || hit == "s") {
-		for (int i = 0; i < dealerHand.size(); i++) {
-			lastChar = dealerHand[i].size() - 1;
-			temp = dealerHand[i].at(lastChar);
-			cout << dealerHand[i].erase(dealerHand[i].size() - 1);
-			displaySuit(temp);
-			cout << " ";
-		}
-		cout << "\nTotal: " << dealerTotal << endl;
+	else if (playerTotal == 10) {
+		if (dealerInitTotal > 9)
+			cout << "Perfect Basic Strategy: HIT\n";
+		else
+			cout << "Perfect Basic Strategy: DOUBLE DOWN\n";
 	}
-	else {
-		cout << "?? ";
-		lastChar = dealerHand[1].size() - 1;
-		temp = dealerHand[1].at(lastChar);
-		cout << dealerHand[1].erase(dealerHand[1].size() - 1);
-		displaySuit(temp);
-		cout << "\nTotal: " << dealerInitTotal << endl;
+	else if (playerTotal == 11) {
+		if (dealerInitTotal < 10)
+			cout << "Perfect Basic Strategy: HIT\n";
+		else
+			cout << "Perfect Basic Strategy: DOUBLE DOWN\n";
 	}
-	cout << endl;
-}
-
-void delay(void) {
-	this_thread::sleep_for(chrono::milliseconds(200));
-}
-
-void aceCheck(int x, int& y) {
-	if (x < 4)
-		y++;
-}
-
-void displayBankroll(int bankroll) {
-	cout << "Bankroll: ";
-	for (int i = 0; i < bankroll; i++)
-		cout << "$";
-	cout << " (" << bankroll << ")" << endl;
-}
-
-void displaySuit(char temp) {
-	if (temp == 's')
-		printSuit(spade);
-	else if (temp == 'h')
-		printSuit(heart);
-	else if (temp == 'd')
-		printSuit(diamond);
-	else
-		printSuit(club);
+	else if (playerTotal == 12) {
+		if (dealerInitTotal < 4 || dealerInitTotal > 6)
+			cout << "Perfect Basic Strategy: HIT\n";
+		else
+			cout << "Perfect Basic Strategy: STAY\n";
+	}
+	else if (playerTotal > 12 && playerTotal < 17) {
+		if (dealerInitTotal > 6)
+			cout << "Perfect Basic Strategy: HIT\n";
+		else
+			cout << "Perfect Basic Strategy: STAY\n";
+	}
+	else 
+		cout << "Perfect Basic Strategy: STAY\n";
+	
+	
 }
